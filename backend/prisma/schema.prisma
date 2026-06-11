@@ -1,0 +1,446 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  ADMIN
+  SELLER
+}
+
+enum ProductFamily {
+  NORMAL
+  WHITE
+  PACKAGED
+}
+
+enum EggGrade {
+  EXTRA
+  ESPECIAL
+  PRIMERA
+  SEGUNDA
+  TERCERA
+  CUARTA
+  QUINTA
+}
+
+enum PackSize {
+  P30
+  P20
+  P10
+  P6
+}
+
+enum BaseStockUnit {
+  EGG
+  PACK
+}
+
+enum TransactionUnit {
+  GROUP
+  MAPLE
+  UNIT
+  PACK
+}
+
+enum SalesChannel {
+  RETAIL
+  WHOLESALE
+}
+
+enum SupplierOrderStatus {
+  DRAFT
+  ORDERED
+  PARTIALLY_RECEIVED
+  RECEIVED
+  CANCELLED
+}
+
+enum SupplierOrderItemStatus {
+  PENDING
+  PARTIAL
+  RECEIVED
+  CANCELLED
+}
+
+enum PaymentStatus {
+  UNPAID
+  PARTIAL
+  PAID
+}
+
+enum WholesaleSaleStatus {
+  PENDING
+  PARTIAL
+  PAID
+  CANCELLED
+}
+
+enum PaymentMethod {
+  CASH
+  TRANSFER
+  QR
+  CARD
+  OTHER
+}
+
+enum MovementDirection {
+  IN
+  OUT
+}
+
+enum InventoryMovementType {
+  INITIAL_STOCK
+  PURCHASE_RECEIPT
+  WHOLESALE_SALE
+  RETAIL_SALE
+  ADJUSTMENT
+  RETURN_IN
+  RETURN_OUT
+}
+
+enum MovementSourceType {
+  SUPPLIER_ORDER
+  WHOLESALE_SALE
+  RETAIL_DAILY_SALE
+  MANUAL_ADJUSTMENT
+}
+
+model User {
+  id           String   @id @default(uuid()) @db.Uuid
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         UserRole
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  dailyPricesSet              DailyPrice[]        @relation("DailyPriceSetBy")
+  supplierOrdersCreated       SupplierOrder[]     @relation("SupplierOrderCreatedBy")
+  supplierPaymentsRegistered  SupplierPayment[]   @relation("SupplierPaymentRegisteredBy")
+  wholesaleSalesCreated       WholesaleSale[]     @relation("WholesaleSaleCreatedBy")
+  wholesalePaymentsRegistered WholesalePayment[]  @relation("WholesalePaymentRegisteredBy")
+  retailDailySalesCreated     RetailDailySale[]   @relation("RetailDailySaleCreatedBy")
+  inventoryMovementsCreated   InventoryMovement[] @relation("InventoryMovementCreatedBy")
+  wholesaleCustomersDeleted   WholesaleCustomer[] @relation("WholesaleCustomerDeletedBy")
+}
+
+model Product {
+  id             String        @id @default(uuid()) @db.Uuid
+  sku            String        @unique
+  name           String
+  family         ProductFamily
+  grade          EggGrade?
+  packSize       PackSize?
+  baseStockUnit  BaseStockUnit
+  unitsPerPack   Int?
+  alertThreshold Int           @default(600)
+  isActive       Boolean       @default(true)
+  notes          String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  stock                Stock?
+  dailyPrices          DailyPrice[]
+  supplierOrderItems   SupplierOrderItem[]
+  wholesaleSaleItems   WholesaleSaleItem[]
+  retailDailySaleItems RetailDailySaleItem[]
+  inventoryMovements   InventoryMovement[]
+
+  @@index([family, isActive])
+  @@index([grade])
+}
+
+model Stock {
+  id              String   @id @default(uuid()) @db.Uuid
+  productId       String   @unique @db.Uuid
+  onHand          Int      @default(0)
+  averageUnitCost Decimal  @default(0) @db.Decimal(12, 4)
+  updatedAt       DateTime @updatedAt
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Restrict)
+}
+
+model DailyPrice {
+  id          String       @id @default(uuid()) @db.Uuid
+  productId   String       @db.Uuid
+  priceDate   DateTime     @db.Date
+  channel     SalesChannel @default(RETAIL)
+  salePrice   Decimal      @db.Decimal(12, 2)
+  setByUserId String       @db.Uuid
+  createdAt   DateTime     @default(now())
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Restrict)
+  setBy   User    @relation("DailyPriceSetBy", fields: [setByUserId], references: [id], onDelete: Restrict)
+
+  @@unique([productId, priceDate, channel])
+  @@index([priceDate])
+}
+
+model Supplier {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String
+  contactName String?
+  phone       String?
+  address     String?
+  notes       String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  orders SupplierOrder[]
+
+  @@index([name])
+}
+
+model SupplierOrder {
+  id                   String              @id @default(uuid()) @db.Uuid
+  supplierId           String              @db.Uuid
+  orderedAt            DateTime            @default(now())
+  expectedDeliveryDate DateTime?           @db.Date
+  status               SupplierOrderStatus @default(ORDERED)
+  paymentStatus        PaymentStatus       @default(UNPAID)
+
+  orderedTotalEstimated Decimal @default(0) @db.Decimal(12, 2)
+  receivedTotalActual   Decimal @default(0) @db.Decimal(12, 2)
+  amountPaid            Decimal @default(0) @db.Decimal(12, 2)
+  balanceDue            Decimal @default(0) @db.Decimal(12, 2)
+
+  notes           String?
+  createdByUserId String   @db.Uuid
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  supplier  Supplier            @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  createdBy User                @relation("SupplierOrderCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  items     SupplierOrderItem[]
+  payments  SupplierPayment[]
+
+  @@index([supplierId, orderedAt])
+  @@index([status, paymentStatus])
+}
+
+model SupplierOrderItem {
+  id        String @id @default(uuid()) @db.Uuid
+  orderId   String @db.Uuid
+  productId String @db.Uuid
+
+  orderedUnit         TransactionUnit
+  orderedQuantity     Decimal         @db.Decimal(12, 2)
+  orderedBaseQuantity Int
+
+  quotedUnitCost Decimal? @db.Decimal(12, 4)
+
+  receivedUnit         TransactionUnit?
+  receivedQuantity     Decimal?         @db.Decimal(12, 2)
+  receivedBaseQuantity Int              @default(0)
+  receivedUnitCost     Decimal?         @db.Decimal(12, 4)
+
+  lineStatus SupplierOrderItemStatus @default(PENDING)
+  notes      String?
+  createdAt  DateTime                @default(now())
+  updatedAt  DateTime                @updatedAt
+
+  order   SupplierOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product       @relation(fields: [productId], references: [id], onDelete: Restrict)
+
+  @@index([orderId, productId])
+}
+
+model SupplierPayment {
+  id                 String        @id @default(uuid()) @db.Uuid
+  orderId            String        @db.Uuid
+  amount             Decimal       @db.Decimal(12, 2)
+  paymentDate        DateTime      @default(now())
+  method             PaymentMethod
+  reference          String?
+  notes              String?
+  registeredByUserId String        @db.Uuid
+  createdAt          DateTime      @default(now())
+
+  order        SupplierOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  registeredBy User          @relation("SupplierPaymentRegisteredBy", fields: [registeredByUserId], references: [id], onDelete: Restrict)
+
+  @@index([orderId, paymentDate])
+}
+
+model WholesaleCustomer {
+  id             String   @id @default(uuid()) @db.Uuid
+  code           String   @unique
+  businessName   String
+  contactName    String?
+  phone          String?
+  address        String?
+  documentNumber String?
+  creditLimit    Decimal? @db.Decimal(12, 2)
+  notes          String?
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  deletedAt       DateTime?
+  deletedByUserId String?   @db.Uuid
+  deletedBy       User?     @relation("WholesaleCustomerDeletedBy", fields: [deletedByUserId], references: [id], onDelete: SetNull)
+
+  sales    WholesaleSale[]
+  payments WholesalePayment[]
+
+  @@index([businessName])
+}
+
+model WholesaleSale {
+  id         String              @id @default(uuid()) @db.Uuid
+  customerId String              @db.Uuid
+  saleDate   DateTime            @default(now())
+  status     WholesaleSaleStatus @default(PENDING)
+
+  subtotal             Decimal @default(0) @db.Decimal(12, 2)
+  amountPaid           Decimal @default(0) @db.Decimal(12, 2)
+  balanceDue           Decimal @default(0) @db.Decimal(12, 2)
+  estimatedCostTotal   Decimal @default(0) @db.Decimal(12, 2)
+  estimatedProfitTotal Decimal @default(0) @db.Decimal(12, 2)
+
+  notes           String?
+  createdByUserId String   @db.Uuid
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  customer           WholesaleCustomer            @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  createdBy          User                         @relation("WholesaleSaleCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  items              WholesaleSaleItem[]
+  paymentAllocations WholesalePaymentAllocation[]
+
+  @@index([customerId, saleDate])
+  @@index([status])
+}
+
+model WholesaleSaleItem {
+  id        String @id @default(uuid()) @db.Uuid
+  saleId    String @db.Uuid
+  productId String @db.Uuid
+
+  saleUnit     TransactionUnit
+  quantity     Decimal         @db.Decimal(12, 2)
+  baseQuantity Int
+
+  unitPrice         Decimal @db.Decimal(12, 2)
+  estimatedUnitCost Decimal @db.Decimal(12, 4)
+  subtotal          Decimal @db.Decimal(12, 2)
+  estimatedProfit   Decimal @db.Decimal(12, 2)
+
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  sale    WholesaleSale @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  product Product       @relation(fields: [productId], references: [id], onDelete: Restrict)
+
+  @@index([saleId, productId])
+}
+
+model WholesalePayment {
+  id                 String        @id @default(uuid()) @db.Uuid
+  customerId         String        @db.Uuid
+  amount             Decimal       @db.Decimal(12, 2)
+  paymentDate        DateTime      @default(now())
+  method             PaymentMethod
+  reference          String?
+  notes              String?
+  registeredByUserId String        @db.Uuid
+  createdAt          DateTime      @default(now())
+
+  customer     WholesaleCustomer            @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  registeredBy User                         @relation("WholesalePaymentRegisteredBy", fields: [registeredByUserId], references: [id], onDelete: Restrict)
+  allocations  WholesalePaymentAllocation[]
+
+  @@index([customerId, paymentDate])
+}
+
+model WholesalePaymentAllocation {
+  id        String   @id @default(uuid()) @db.Uuid
+  paymentId String   @db.Uuid
+  saleId    String   @db.Uuid
+  amount    Decimal  @db.Decimal(12, 2)
+  createdAt DateTime @default(now())
+
+  payment WholesalePayment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  sale    WholesaleSale    @relation(fields: [saleId], references: [id], onDelete: Cascade)
+
+  @@unique([paymentId, saleId])
+  @@index([saleId])
+}
+
+model RetailDailySale {
+  id       String   @id @default(uuid()) @db.Uuid
+  saleDate DateTime @db.Date
+  isClosed Boolean  @default(false)
+
+  grossTotal           Decimal @default(0) @db.Decimal(12, 2)
+  estimatedCostTotal   Decimal @default(0) @db.Decimal(12, 2)
+  estimatedProfitTotal Decimal @default(0) @db.Decimal(12, 2)
+
+  notes           String?
+  createdByUserId String    @db.Uuid
+  closedAt        DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  createdBy User                  @relation("RetailDailySaleCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  items     RetailDailySaleItem[]
+
+  @@unique([saleDate, createdByUserId])
+  @@index([saleDate])
+}
+
+model RetailDailySaleItem {
+  id                String @id @default(uuid()) @db.Uuid
+  retailDailySaleId String @db.Uuid
+  productId         String @db.Uuid
+
+  saleUnit     TransactionUnit
+  quantity     Decimal         @db.Decimal(12, 2)
+  baseQuantity Int
+
+  unitPrice         Decimal @db.Decimal(12, 2)
+  estimatedUnitCost Decimal @db.Decimal(12, 4)
+  subtotal          Decimal @db.Decimal(12, 2)
+  estimatedProfit   Decimal @db.Decimal(12, 2)
+
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  retailDailySale RetailDailySale @relation(fields: [retailDailySaleId], references: [id], onDelete: Cascade)
+  product         Product         @relation(fields: [productId], references: [id], onDelete: Restrict)
+
+  @@unique([retailDailySaleId, productId])
+  @@index([productId])
+}
+
+model InventoryMovement {
+  id         String                @id @default(uuid()) @db.Uuid
+  productId  String                @db.Uuid
+  type       InventoryMovementType
+  direction  MovementDirection
+  quantity   Int
+  stockAfter Int
+
+  unitCostSnapshot  Decimal? @db.Decimal(12, 4)
+  unitPriceSnapshot Decimal? @db.Decimal(12, 2)
+
+  sourceType      MovementSourceType?
+  sourceId        String?
+  note            String?
+  occurredAt      DateTime            @default(now())
+  createdByUserId String?             @db.Uuid
+
+  product   Product @relation(fields: [productId], references: [id], onDelete: Restrict)
+  createdBy User?   @relation("InventoryMovementCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  @@index([productId, occurredAt])
+  @@index([sourceType, sourceId])
+}
