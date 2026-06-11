@@ -1,12 +1,16 @@
+//import { PrismaClient, ProductFamily, EggGrade, PackSize, BaseStockUnit } from '@prisma/client'
 import { Pool } from 'pg'
 import { PrismaPg } from '@prisma/adapter-pg'
-import { PrismaClient, ProductFamily, EggGrade, PackSize, BaseStockUnit, TransactionUnit } from '@prisma/client'
-
-const pool = new Pool({ connectionString: process.env.DATABASE_URL })
-const adapter = new PrismaPg(pool)
+import { PrismaClient, ProductFamily, EggGrade, PackSize, BaseStockUnit } from '@prisma/client'
 
 //const prisma = new PrismaClient()
-const prisma = new PrismaClient({ adapter })
+
+const pool = new Pool({ 
+  connectionString: process.env.DATABASE_URL,
+  ssl: false,
+})
+const adapter = new PrismaPg(pool)
+const prisma = new PrismaClient({ adapter } as any)
 
 const ALERT_THRESHOLD_EGGS = 600
 const ALERT_THRESHOLD_PACKS = 20
@@ -112,7 +116,6 @@ async function main() {
   }
 
   // ─── ADMIN POR DEFECTO ─────────────────────────────────────────
-  // Solo para desarrollo, se reemplaza en producción
   const { hash } = await import('bcryptjs')
   const adminPassword = await hash('admin123', 10)
 
