@@ -15,11 +15,12 @@ function createPrismaClient(): PrismaClient {
 export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
   constructor() {
     const pool = new pg.Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: process.env.PG_SSL_NO_VERIFY === 'true' ? { rejectUnauthorized: false } : undefined,
-})
-const adapter = new PrismaPg(pool)
-super({ adapter } as any)
+      connectionString: process.env.DATABASE_URL,
+      // Esto permite conectar a Supabase sin problemas de certificados self-signed
+      ssl: { rejectUnauthorized: false } 
+    })
+    const adapter = new PrismaPg(pool)
+    super({ adapter } as any)
   }
 
   async onModuleInit() {
