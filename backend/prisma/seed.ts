@@ -7,7 +7,7 @@ import { PrismaClient, ProductFamily, EggGrade, PackSize, BaseStockUnit } from '
 
 const pool = new Pool({ 
   connectionString: process.env.DATABASE_URL,
-  ssl: false,
+  ssl: { rejectUnauthorized: false },
 })
 const adapter = new PrismaPg(pool)
 const prisma = new PrismaClient({ adapter } as any)
